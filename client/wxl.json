@@ -1,0 +1,27 @@
+{
+  "manifest": 1,
+  "extension": {
+    "id": "wxl-world-invert",
+    "version": "0.7.1",
+    "abi": "1.1",
+    "entry": "wxl-world-invert.dll",
+    "assets": [],
+    "requires": {},
+    "conflicts": [],
+    "hooks": []
+  },
+  "deploy": {
+    "mode": "release",
+    "match": "*.dll"
+  },
+  "listing": {
+    "title": "WXL World Mirror",
+    "tagline": "Horizontal world mirroring with matching controls and world picking.",
+    "description": "README.md",
+    "gallery": [],
+    "categories": ["graphics", "accessibility"],
+    "accent": "#6f5cff"
+  },
+  "license": "GPL-3.0-or-later",
+  "signature": null
+}

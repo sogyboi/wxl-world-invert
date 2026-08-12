@@ -1,0 +1,65 @@
+name: Build and release World Mirror
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: WarcraftXL/wxl-core
+          ref: 439d5a90235a8f38ea3ca3d91541f0cf0a626fe1
+          path: .wxl-sdk
+
+      - name: Verify public source tree
+        shell: pwsh
+        run: .\scripts\Verify-PublicTree.ps1
+
+      - name: Configure, build, and test
+        shell: pwsh
+        run: |
+          cmake -S client -B client\.build\release -A Win32 "-DWXL_SDK_ROOT=$PWD\.wxl-sdk"
+          cmake --build client\.build\release --config Release --target wxl-world-invert wxl-world-invert-static-tests wxl-world-invert-abi-probe
+          & .\client\.build\release\Release\wxl-world-invert-static-tests.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Static tests failed.' }
+          & .\client\.build\release\Release\wxl-world-invert-abi-probe.exe .\client\.build\release\Release\wxl-world-invert.dll
+          if ($LASTEXITCODE -ne 0) { throw 'ABI probe failed.' }
+
+      - name: Package installer ZIP
+        id: package
+        shell: pwsh
+        run: |
+          $manifest = Get-Content -Raw .\client\wxl.json | ConvertFrom-Json
+          $version = $manifest.extension.version
+          $stage = Join-Path $PWD 'dist\stage'
+          $extension = Join-Path $stage 'Extensions\wxl-world-invert'
+          $addon = Join-Path $stage 'Interface\AddOns\WorldMirrorControls'
+          New-Item -ItemType Directory -Path $extension, $addon -Force | Out-Null
+          Copy-Item .\client\.build\release\Release\wxl-world-invert.dll $extension
+          Copy-Item .\client\wxl.json $extension
+          Copy-Item .\README.md, .\LICENSE $extension
+          Copy-Item .\addons\WorldMirrorControls\* $addon
+          $archive = Join-Path $PWD "dist\wxl-world-invert-v$version.zip"
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $archive -Force
+          "archive=$archive" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wxl-world-invert-installer
+          path: ${{ steps.package.outputs.archive }}
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: ${{ steps.package.outputs.archive }}

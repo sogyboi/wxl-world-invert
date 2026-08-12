@@ -1,0 +1,5 @@
+## Interface: 30300
+## Title: World Mirror Controls
+## Notes: Session-only A/D movement and mouse-yaw mirror controlled by the World Mirror extension.
+## Version: 1.3.0
+WorldMirrorControls.lua
