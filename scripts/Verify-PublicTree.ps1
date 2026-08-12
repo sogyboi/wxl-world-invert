@@ -32,4 +32,5 @@ if ($violations.Count -gt 0) {
     throw 'Public-tree verification failed.'
 }
 
+$global:LASTEXITCODE = 0
 Write-Host 'PUBLIC_TREE_OK'
