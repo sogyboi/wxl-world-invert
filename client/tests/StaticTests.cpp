@@ -5,8 +5,9 @@
 #include <cstdio>
 #include <cstring>
 
+#include "RuntimeCompat.hpp"
 #include "WorldInvertShared.hpp"
-#include "engine/events/Event.hpp"
+#include "offsets/engine/Gx.hpp"
 #include "offsets/game/World.hpp"
 
 namespace
@@ -33,27 +34,18 @@ namespace
 
 int main()
 {
+    Expect(world_invert::kPluginVersion == 805 &&
+               std::strcmp(world_invert::kPluginVersionText, "0.8.5") == 0,
+           "menu version text matches the binary plugin version");
+    Expect(world_invert::MirrorHorizontalCoordinate(-1.0f, 1.0f, -0.25f) == 0.25f &&
+               world_invert::MirrorHorizontalCoordinate(20.0f, 120.0f, 35.0f) == 105.0f,
+           "screen-coordinate mirroring reflects within the native viewport interval");
     Expect(world_invert::MirrorHorizontalU(0.0f) == 1.0f &&
                world_invert::MirrorHorizontalU(0.25f) == 0.75f &&
                world_invert::MirrorHorizontalU(1.0f) == 0.0f,
-           "horizontal mirror complements only the U coordinate");
-    // These IDs are the ABI-1.1 values verified against the active local WXL core.  The plugin
-    // never relies on events appended after WorldLeave.
-    Expect(static_cast<uint32_t>(wxl::events::Event::OnDeviceLost) == 7,
-           "OnDeviceLost ABI event number remains pinned");
-    Expect(static_cast<uint32_t>(wxl::events::Event::OnDeviceReset) == 8,
-           "OnDeviceReset ABI event number remains pinned");
-    Expect(static_cast<uint32_t>(wxl::events::Event::OnWorldRenderEnd) == 11,
-           "OnWorldRenderEnd ABI event number remains pinned");
-    Expect(static_cast<uint32_t>(wxl::events::Event::OnInput) == 17,
-           "OnInput ABI event number remains pinned");
-    Expect(static_cast<uint32_t>(wxl::events::Event::OnWorldEnter) == 32 &&
-               static_cast<uint32_t>(wxl::events::Event::OnWorldLeave) == 33,
-           "world lifecycle ABI event numbers remain pinned");
-    Expect(wxl::offsets::game::world::kPickAtScreen == 0x004F9DA0 &&
-               wxl::offsets::game::world::kWorldFrame == 0x00B7436C,
-           "world-picking ABI landmarks remain pinned to client build 12340");
-
+           "scene compositor reflects texture U exactly once");
+    Expect(std::strstr(world_invert::kPixelShaderSource, "tex2D(Source, uv)") != nullptr,
+           "scene compositor shader preserves the viewport-bounded source coordinates");
     const pD3DCompile compile = ResolveD3DCompile();
     Expect(compile != nullptr, "D3DCompile is present for runtime pixel-shader creation");
     if (compile != nullptr) {
@@ -65,9 +57,31 @@ int main()
                                        D3DCOMPILE_ENABLE_STRICTNESS, 0, &byteCode, &errors);
         if (errors != nullptr) errors->Release();
         Expect(SUCCEEDED(result) && byteCode != nullptr && byteCode->GetBufferSize() > 0,
-               "world-mirror HLSL compiles as ps_2_0");
+               "viewport compositor HLSL compiles as ps_2_0");
         if (byteCode != nullptr) byteCode->Release();
     }
+    Expect(world_invert::MirrorHorizontalClipFlags(0x01) == 0x04 &&
+               world_invert::MirrorHorizontalClipFlags(0x04) == 0x01 &&
+               world_invert::MirrorHorizontalClipFlags(0x0A) == 0x0A,
+           "world-label clipping swaps left and right without changing vertical bits");
+
+    // The locally deployed f222923 WXL runtime predates SDK-439's inserted scene event. Subscribe
+    // through this narrow compatibility map rather than the newer SDK enum after that insertion.
+    Expect(world_invert::runtime::kDeviceLost == 7 &&
+               world_invert::runtime::kDeviceReset == 8 &&
+               world_invert::runtime::kWorldRenderEnd == 11 &&
+               world_invert::runtime::kWorldEnter == 32 &&
+               world_invert::runtime::kWorldLeave == 33 &&
+               world_invert::runtime::kWorldOverlayRender == 0x007E7490,
+           "deployed WXL lifecycle event numbers remain pinned");
+    Expect(wxl::offsets::engine::gx::kWorldOnRender == 0x004F8EA0 &&
+               wxl::offsets::game::world::kGetScreenCoordinates == 0x004F6D20 &&
+               wxl::offsets::game::world::kPickAtScreen == 0x004F9DA0 &&
+               wxl::offsets::game::world::kWorldFrame == 0x00B7436C,
+           "world-render, world-label, and world-picking landmarks remain pinned to build 12340");
+    Expect(wxl::offsets::engine::gx::kGxDevicePtr == 0x00C5DF88 &&
+               wxl::offsets::engine::gx::kD3DDeviceField == 0x397C,
+           "active D3D9 device landmarks remain pinned to build 12340");
 
     if (g_failures == 0) {
         std::puts("wxl-world-invert static tests passed");
